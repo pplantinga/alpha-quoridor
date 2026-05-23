@@ -1,0 +1,22 @@
+board_size: 5
+walls_per_player: 3
+
+model:
+  hidden_dim: 64
+  num_blocks: 2
+  use_compile: false
+
+training:
+  num_self_play_games: 50
+  batch_size: 64
+  lr: 0.0006
+  num_iterations: 10
+  buffer_size: 5000
+  num_workers: 2
+
+mcts:
+  num_simulations: 50
+  c_puct: 1.5
+  temperature: 0.6
+  dirichlet_noise_alpha: 0.3
+  dirichlet_noise_epsilon: 0.25

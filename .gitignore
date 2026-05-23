@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+venv/
+uv.lock
+
+# Checkpoints and logs
+checkpoints/
+runs/
+*.pt
+*.pth
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.ty_cache/
+
+# Compiled files
+src/game/rules_fast.html
+src/game/rules_fast.c
+src/game/rules_fast.*.so

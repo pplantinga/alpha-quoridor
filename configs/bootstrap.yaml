@@ -1,0 +1,17 @@
+# Quoridor Bootstrap Configuration
+
+# Phase 1: Minimax Priming
+minimax_priming_games: 100
+minimax_depth: 2
+
+# Phase 2: Wall Curriculum
+# Format: [ [start_epoch, walls_per_player], ... ]
+wall_curriculum:
+  - [1, 0]    # Epoch 1-9: No walls
+  - [5, 1]   # Epoch 10-19: 1 wall
+  - [10, 2]   # Epoch 20-29: 2 walls
+  - [20, 4]   # Epoch 30-39: 4 walls
+  - [30, 6]   # Epoch 40-49: 6 walls
+  - [40, 10]  # Epoch 50+: Full walls
+
+epochs: 100
