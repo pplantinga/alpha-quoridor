@@ -17,6 +17,13 @@ _DIRECTIONS: dict[str, tuple[int, int]] = {
 }
 
 
+# Precomputed static bitmasks for board edge boundaries
+_EDGE_NORTH = (1 << 9) - 1  # Row 0
+_EDGE_SOUTH = ((1 << 9) - 1) << (72)  # Row 8
+_EDGE_WEST = sum(1 << (i * 9) for i in range(9))  # Col 0
+_EDGE_EAST = sum(1 << (i * 9 + 8) for i in range(9))  # Col 8
+
+
 # ---------------------------------------------------------------------------
 # Wall blocking helpers
 # ---------------------------------------------------------------------------
@@ -156,23 +163,13 @@ def a_star_path(
     return None
 
 
-try:
-    from game.rules_fast import has_path_to_goal_cython
-    _HAS_CYTHON = True
-except ImportError:
-    _HAS_CYTHON = False
 
 
 def has_path_to_goal(state: QuoridorState, player: int, extra_wall: Wall | None = None) -> bool:
     """Return True if the player has a path to their goal row."""
-    if _HAS_CYTHON:
-        return has_path_to_goal_cython(
-            state.board_size,
-            state.player_pos[player],
-            goal_row(player, state.board_size),
-            state.placed_walls,
-            extra_wall
-        )
+    # Use fast bitboard implementation for standard board size
+    if state.board_size == 9:
+        return has_path_to_goal_bitboard(state, player, extra_wall)
 
     target_row = goal_row(player, state.board_size)
     start = state.player_pos[player]
@@ -204,6 +201,83 @@ def has_path_to_goal(state: QuoridorState, player: int, extra_wall: Wall | None 
 bfs_path_exists = has_path_to_goal
 
 
+def get_move_masks(state: QuoridorState, extra_wall: Wall | None = None) -> tuple[int, int, int, int]:
+    """
+    Return four bitmasks (North, South, East, West) representing allowed moves.
+    A set bit at index i in mask_NORTH means moving North from cell i is legal.
+    """
+    # Initially all moves are legal except for those going off-board
+    mask_n = ~_EDGE_NORTH & ((1 << 81) - 1)
+    mask_s = ~_EDGE_SOUTH & ((1 << 81) - 1)
+    mask_w = ~_EDGE_WEST & ((1 << 81) - 1)
+    mask_e = ~_EDGE_EAST & ((1 << 81) - 1)
+
+    walls = state.placed_walls
+    if extra_wall:
+        walls = walls | {extra_wall}
+
+    for orient, r, c in walls:
+        if orient == "h":
+            # Horizontal wall at (r, c) blocks moving between row r and r+1
+            # at columns c and c+1.
+            # (r, c) index: r*9 + c. (r, c+1) index: r*9 + c+1.
+            # Moving SOUTH from (r, c) is blocked.
+            # Moving NORTH from (r+1, c) is blocked.
+            mask_s &= ~(1 << (r * 9 + c))
+            mask_s &= ~(1 << (r * 9 + c + 1))
+            mask_n &= ~(1 << ((r + 1) * 9 + c))
+            mask_n &= ~(1 << ((r + 1) * 9 + c + 1))
+        else:
+            # Vertical wall at (r, c) blocks moving between col c and c+1
+            # at rows r and r+1.
+            # Moving EAST from (r, c) is blocked.
+            # Moving WEST from (r, c+1) is blocked.
+            mask_e &= ~(1 << (r * 9 + c))
+            mask_e &= ~(1 << ((r + 1) * 9 + c))
+            mask_w &= ~(1 << (r * 9 + c + 1))
+            mask_w &= ~(1 << ((r + 1) * 9 + c + 1))
+
+    return mask_n, mask_s, mask_e, mask_w
+
+
+def has_path_to_goal_bitboard(state: QuoridorState, player: int, extra_wall: Wall | None = None) -> bool:
+    """Return True if the player has a path to their goal row using bitboard flood-fill."""
+    n = state.board_size
+    if n != 9:
+        # Fallback for non-standard board sizes if any, though 9x9 is standard.
+        return has_path_to_goal(state, player, extra_wall)
+
+    target_row = goal_row(player, n)
+    start_r, start_c = state.player_pos[player]
+    if start_r == target_row:
+        return True
+
+    goal_mask = ((1 << 9) - 1) << (target_row * 9)
+    frontier = 1 << (start_r * 9 + start_c)
+    visited = frontier
+
+    mask_n, mask_s, mask_e, mask_w = get_move_masks(state, extra_wall)
+
+    while frontier:
+        # Expand in all 4 directions
+        # Moving North from cell i lands in i-9.
+        # Possible if bit i is set in frontier AND bit i allows North move (mask_n).
+        next_frontier = ((frontier & mask_n) >> 9)
+        # Moving South from cell i lands in i+9.
+        next_frontier |= ((frontier & mask_s) << 9)
+        # Moving West from cell i lands in i-1.
+        next_frontier |= ((frontier & mask_w) >> 1)
+        # Moving East from cell i lands in i+1.
+        next_frontier |= ((frontier & mask_e) << 1)
+
+        frontier = next_frontier & ~visited
+        if frontier & goal_mask:
+            return True
+        visited |= frontier
+
+    return False
+
+
 def _path_intersects_wall(
     path: list[tuple[int, int]], r: int, c: int, orient: str
 ) -> bool:
@@ -225,6 +299,53 @@ def _path_intersects_wall(
             if min(c1, c2) == c and max(c1, c2) == c + 1:
                 if r1 == r2 and (r1 == r or r1 == r + 1):
                     return True
+
+    return False
+
+
+def update_masks(
+    masks: tuple[int, int, int, int], wall: Wall
+) -> tuple[int, int, int, int]:
+    """Return updated masks with a new wall placed."""
+    m_n, m_s, m_e, m_w = masks
+    orient, r, c = wall
+    if orient == "h":
+        m_s &= ~(1 << (r * 9 + c))
+        m_s &= ~(1 << (r * 9 + c + 1))
+        m_n &= ~(1 << ((r + 1) * 9 + c))
+        m_n &= ~(1 << ((r + 1) * 9 + c + 1))
+    else:
+        m_e &= ~(1 << (r * 9 + c))
+        m_e &= ~(1 << ((r + 1) * 9 + c))
+        m_w &= ~(1 << (r * 9 + c + 1))
+        m_w &= ~(1 << ((r + 1) * 9 + c + 1))
+    return m_n, m_s, m_e, m_w
+
+
+def has_path_with_masks(
+    board_size: int, player_pos: tuple[int, int], target_row: int, masks: tuple[int, int, int, int]
+) -> bool:
+    """Bitboard flood-fill using precomputed masks."""
+    start_r, start_c = player_pos
+    if start_r == target_row:
+        return True
+
+    goal_mask = ((1 << 9) - 1) << (target_row * 9)
+    frontier = 1 << (start_r * 9 + start_c)
+    visited = frontier
+
+    m_n, m_s, m_e, m_w = masks
+
+    while frontier:
+        next_frontier = ((frontier & m_n) >> 9)
+        next_frontier |= ((frontier & m_s) << 9)
+        next_frontier |= ((frontier & m_w) >> 1)
+        next_frontier |= ((frontier & m_e) << 1)
+
+        frontier = next_frontier & ~visited
+        if frontier & goal_mask:
+            return True
+        visited |= frontier
 
     return False
 
@@ -292,6 +413,13 @@ def legal_moves(state: QuoridorState) -> list[Move]:
         p0_path = a_star_path(state, 0)
         p1_path = a_star_path(state, 1)
 
+        if n == 9:
+            base_masks = get_move_masks(state)
+            p0_pos = state.player_pos[0]
+            p1_pos = state.player_pos[1]
+            p0_goal = goal_row(0, n)
+            p1_goal = goal_row(1, n)
+
         for r in range(n - 1):
             for c in range(n - 1):
                 for orient in ("h", "v"):
@@ -310,11 +438,19 @@ def legal_moves(state: QuoridorState) -> list[Move]:
 
                     is_valid = True
                     if blocks_p0 or blocks_p1:
-                        # Fallback: run fast BFS treating the new wall as placed
-                        if blocks_p0 and not has_path_to_goal(state, 0, extra_wall=wall):
-                            is_valid = False
-                        if is_valid and blocks_p1 and not has_path_to_goal(state, 1, extra_wall=wall):
-                            is_valid = False
+                        if n == 9:
+                            # Use optimized bitboard check
+                            new_masks = update_masks(base_masks, wall)
+                            if blocks_p0 and not has_path_with_masks(n, p0_pos, p0_goal, new_masks):
+                                is_valid = False
+                            if is_valid and blocks_p1 and not has_path_with_masks(n, p1_pos, p1_goal, new_masks):
+                                is_valid = False
+                        else:
+                            # Fallback: run fast BFS treating the new wall as placed
+                            if blocks_p0 and not has_path_to_goal(state, 0, extra_wall=wall):
+                                is_valid = False
+                            if is_valid and blocks_p1 and not has_path_to_goal(state, 1, extra_wall=wall):
+                                is_valid = False
 
                     if is_valid:
                         moves.append(("wall", r, c, orient))

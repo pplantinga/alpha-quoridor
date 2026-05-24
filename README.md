@@ -46,9 +46,6 @@ This project uses `uv` for dependency management.
 ```bash
 # Install dependencies and create virtual environment
 uv sync --all-extras
-
-# Build Cython extensions for the fast game engine
-uv run python setup.py build_ext --inplace
 ```
 
 ## Usage

@@ -113,7 +113,6 @@ def encode_state(state: QuoridorState) -> torch.Tensor:
     """
     import numpy as np
     n = state.board_size
-    # Use numpy for faster initialization and manipulation
     tensor_np = np.zeros((9, n, n), dtype=np.float32)
 
     # 0: P0 position
@@ -124,26 +123,21 @@ def encode_state(state: QuoridorState) -> torch.Tensor:
     r1, c1 = state.player_pos[1]
     tensor_np[1, r1, c1] = 1.0
 
-    # 2: H walls
-    # 3: V walls
+    # 2: H walls, 3: V walls
     for orient, r, c in state.placed_walls:
-        if orient == "h":
-            tensor_np[2, r, c] = 1.0
-        else:
-            tensor_np[3, r, c] = 1.0
+        channel = 2 if orient == "h" else 3
+        tensor_np[channel, r, c] = 1.0
 
-    # 4: Current player turn (all 1s for P0, 0s for P1)
+    # 4: Current player turn
     if state.current_player == 0:
         tensor_np[4, :, :] = 1.0
 
-    # 5: P0 walls normalized
+    # 5, 6: Walls remaining normalized
     max_walls = max(1, state.walls_per_player)
     tensor_np[5, :, :] = state.walls_remaining[0] / max_walls
-
-    # 6: P1 walls normalized
     tensor_np[6, :, :] = state.walls_remaining[1] / max_walls
 
-    # 7, 8: Distance maps
+    # 7, 8: Distance maps (high-performance bitboard version)
     tensor_np[7:9, :, :] = compute_distance_maps(state).numpy()
 
     return torch.from_numpy(tensor_np)
@@ -154,6 +148,64 @@ def compute_distance_maps(state: QuoridorState) -> torch.Tensor:
         Tensor of shape (2, N, N) where channel 0 is P0's normalized distance map,
         and channel 1 is P1's normalized distance map.
     """
+    import numpy as np
+
+    from game.board import goal_row
+    from game.rules import get_move_masks
+
+    n = state.board_size
+    dist_maps = np.full((2, n, n), float(n * n), dtype=np.float32)
+
+    if n != 9:
+        # Simple BFS fallback for non-standard board sizes
+        return _compute_distance_maps_bfs(state)
+
+    mask_n, mask_s, mask_e, mask_w = get_move_masks(state)
+
+    for player in (0, 1):
+        target_row = goal_row(player, n)
+        goal_mask = ((1 << 9) - 1) << (target_row * 9)
+        frontier = goal_mask
+        visited = frontier
+        d = 0.0
+
+        # Mark distance 0 for the whole goal row
+        dist_maps[player, target_row, :] = 0.0
+
+        while frontier:
+            d += 1.0
+            # Expand using bitboard masks
+            # Note: We want to expand FROM the goal row to all cells.
+            # Moving from cell i to i-9 (North) is possible if mask_n[i] is set.
+            # If we are expanding FROM goal row (South-to-North), we use mask_s on the results?
+            # Wait, if we can move North from i to i-9, then i-9 is reachable from i.
+            # If frontier is at row r, frontier << 9 is at row r+1.
+            # This is possible if bits in r+1 allow North move (mask_n).
+            # No, if bits in r allow South move (mask_s).
+            # Let's keep it simple:
+            next_frontier = ((frontier & mask_n) >> 9)
+            next_frontier |= ((frontier & mask_s) << 9)
+            next_frontier |= ((frontier & mask_w) >> 1)
+            next_frontier |= ((frontier & mask_e) << 1)
+
+            frontier = next_frontier & ~visited
+            if not frontier:
+                break
+
+            # Update distance map for newly reached cells
+            # We can use bit manipulation to find indices or just iterate over the 81 bits
+            # (Looping over 81 bits in Python is okay once per distance level)
+            indices = [i for i in range(81) if (frontier >> i) & 1]
+            for i in indices:
+                dist_maps[player, i // 9, i % 9] = d
+
+            visited |= frontier
+
+    return torch.from_numpy(dist_maps / float(n * n))
+
+
+def _compute_distance_maps_bfs(state: QuoridorState) -> torch.Tensor:
+    """Fallback BFS implementation for non-9x9 boards."""
     from collections import deque
 
     import numpy as np
@@ -162,24 +214,20 @@ def compute_distance_maps(state: QuoridorState) -> torch.Tensor:
     from game.rules import _DIRECTIONS, is_blocked
 
     n = state.board_size
-    # Use numpy for the distance map calculations
     dist_maps = np.full((2, n, n), float(n * n), dtype=np.float32)
 
     for player in (0, 1):
         target_row = goal_row(player, n)
         queue = deque()
-
         for c in range(n):
             queue.append((target_row, c, 0))
             dist_maps[player, target_row, c] = 0.0
 
         while queue:
             r, c, d = queue.popleft()
-
             for direction_name, (dr, dc) in _DIRECTIONS.items():
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < n and 0 <= nc < n:
-                    # A wall blocking going from (r,c) to (nr,nc) means it blocks (nr,nc) to (r,c)
                     if not is_blocked(state, (r, c), direction_name):
                         if dist_maps[player, nr, nc] > d + 1:
                             dist_maps[player, nr, nc] = d + 1.0

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Verification script for Minimax Agent."""
 
 import sys

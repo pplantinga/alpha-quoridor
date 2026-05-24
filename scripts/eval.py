@@ -40,10 +40,12 @@ def main() -> None:
 
     mcts_wins = 0
     baseline_wins = 0
+    draws = 0
 
     print(f"Playing {args.games} games against Minimax (depth={args.depth})...")
     for game in range(args.games):
         state = initial_state(config.board_size, config.walls_per_player)
+        move_count = 0
 
         # Alternate who goes first
         agents = {
@@ -51,7 +53,7 @@ def main() -> None:
             1: baseline_agent if game % 2 == 0 else mcts_agent,
         }
 
-        while not state.is_terminal:
+        while not state.is_terminal and move_count < 200:
             agent = agents[state.current_player]
 
             # MCTS agent uses training=False for deterministic max-visit move selection
@@ -61,16 +63,23 @@ def main() -> None:
                 move = agent.select_move(state)
 
             state = apply_move(state, move)
+            move_count += 1
 
-        print(f"Game {game + 1}/{args.games} — Winner: Player {state.winner} ({'MCTS' if agents[state.winner] is mcts_agent else 'Minimax'})")
-        if agents[state.winner] is mcts_agent:
-            mcts_wins += 1
+        winner = state.winner
+        if winner is not None:
+            print(f"Game {game + 1}/{args.games} — Winner: Player {winner} ({'MCTS' if agents[winner] is mcts_agent else 'Minimax'}) in {move_count} moves")
+            if agents[winner] is mcts_agent:
+                mcts_wins += 1
+            else:
+                baseline_wins += 1
         else:
-            baseline_wins += 1
+            print(f"Game {game + 1}/{args.games} — Result: Draw in {move_count} moves")
+            draws += 1
 
     print("\n--- Results ---")
     print(f"MCTS Agent: {mcts_wins}")
     print(f"Minimax Baseline: {baseline_wins}")
+    print(f"Draws: {draws}")
 
 
 if __name__ == "__main__":

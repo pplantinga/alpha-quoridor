@@ -40,7 +40,7 @@ def test_state_is_frozen() -> None:
     """QuoridorState must be immutable (frozen dataclass)."""
     state = initial_state(9, 10)
     try:
-        state.current_player = 1  # type: ignore[misc]
+        setattr(state, "current_player", 1)
         assert False, "Should have raised FrozenInstanceError"
     except Exception:
         pass

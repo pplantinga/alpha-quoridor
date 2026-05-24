@@ -60,13 +60,16 @@ def main() -> None:
         trainer.load_checkpoint(checkpoint_path)
 
     # --- Phase 1: Minimax Priming ---
-    num_priming = b_config.get("minimax_priming_games", 0)
-    if num_priming > 0 and len(trainer.buffer) == 0:
-        print(f"Phase 1: Generating {num_priming} Minimax priming games...")
+    num_priming = b_config.get("num_priming", 100)
+    if isinstance(num_priming, (int, float, str)) and int(num_priming) > 0 and len(trainer.buffer) == 0:
+        n_priming = int(num_priming)
+        depth_val = b_config.get("minimax_depth", 2)
+        n_depth = int(depth_val) if isinstance(depth_val, (int, str)) else 2
+        print(f"Priming buffer with {n_priming} heuristic games (depth {n_depth})...")
         priming_exps = generate_heuristic_data(
-            config,
-            num_games=num_priming,
-            depth=b_config.get("minimax_depth", 2)
+            config=config,
+            num_games=n_priming,
+            depth=n_depth
         )
         for exp in priming_exps:
             trainer.buffer.add(*exp)
@@ -78,15 +81,17 @@ def main() -> None:
 
     # --- Phase 2: Curriculum Training ---
     print("Phase 2: Starting curriculum training loop...")
-    schedule = b_config.get("wall_curriculum", [])
-    epochs = b_config.get("epochs", 100)
+    epochs_val = b_config.get("epochs", 10)
+    epochs = int(epochs_val) if isinstance(epochs_val, (int, str)) else 10
+    schedule = b_config.get("schedule", [])
 
     try:
         for epoch in range(1, epochs + 1):
             print(f"\n--- Epoch {epoch} ---")
 
             # Apply curriculum
-            trainer.update_curriculum(epoch, schedule)
+            if isinstance(schedule, list):
+                trainer.update_curriculum(epoch, schedule)
 
             losses = trainer.run_iteration()
             print(f"Losses: Total={losses['loss']:.4f}, Policy={losses['policy_loss']:.4f}, Value={losses['value_loss']:.4f}")
