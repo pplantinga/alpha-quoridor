@@ -4,7 +4,7 @@ import math
 import random
 
 from game.board import Move, QuoridorState
-from game.rules import a_star_path, apply_move, legal_moves
+from game.rules import a_star_path, apply_move, legal_moves, shortest_path_distance
 
 
 class MinimaxAgent:
@@ -114,16 +114,12 @@ class MinimaxAgent:
         p0 = original_player
         p1 = original_player ^ 1
 
-        p0_path = a_star_path(state, p0)
-        p1_path = a_star_path(state, p1)
-
-        # fallback to board size if no path found (should not happen in legal states)
-        p0_len = len(p0_path) if p0_path else state.board_size * state.board_size
-        p1_len = len(p1_path) if p1_path else state.board_size * state.board_size
+        p0_dist = shortest_path_distance(state, p0)
+        p1_dist = shortest_path_distance(state, p1)
 
         # Maximize opponent path and minimize own
         # Also slight bonus for having as many or more walls
-        score = (p1_len - p0_len)
+        score = (p1_dist - p0_dist)
         if state.walls_remaining[p0] >= state.walls_remaining[p1]:
             score += 0.5
 

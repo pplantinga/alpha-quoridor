@@ -278,6 +278,46 @@ def has_path_to_goal_bitboard(state: QuoridorState, player: int, extra_wall: Wal
     return False
 
 
+def shortest_path_distance(state: QuoridorState, player: int) -> int:
+    """Return the shortest path distance to the goal row using bitboard flood-fill."""
+    n = state.board_size
+    if n != 9:
+        # Fallback for non-standard board sizes
+        path = a_star_path(state, player)
+        return len(path) - 1 if path else n * n
+
+    target_row = goal_row(player, n)
+    start_r, start_c = state.player_pos[player]
+    if start_r == target_row:
+        return 0
+
+    goal_mask = ((1 << 9) - 1) << (target_row * 9)
+    frontier = 1 << (start_r * 9 + start_c)
+    visited = frontier
+    dist = 0
+
+    mask_n, mask_s, mask_e, mask_w = get_move_masks(state)
+
+    while frontier:
+        dist += 1
+        next_frontier = ((frontier & mask_n) >> 9)
+        next_frontier |= ((frontier & mask_s) << 9)
+        next_frontier |= ((frontier & mask_w) >> 1)
+        next_frontier |= ((frontier & mask_e) << 1)
+
+        new_cells = next_frontier & ~visited
+        if new_cells & goal_mask:
+            return dist
+
+        if not new_cells:
+            break
+
+        frontier = new_cells
+        visited |= frontier
+
+    return n * n  # No path found
+
+
 def _path_intersects_wall(
     path: list[tuple[int, int]], r: int, c: int, orient: str
 ) -> bool:
