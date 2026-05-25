@@ -14,12 +14,14 @@ def generate_heuristic_data(
     config: Config,
     num_games: int,
     depth: int = 2,
+    randomize: bool = True,
+    noise_level: float = 1.0,
 ) -> list[Experience]:
     """Generate training data using a Minimax agent.
 
     This is used to prime the network with reasonable moves before self-play starts.
     """
-    agent = MinimaxAgent(depth=depth)
+    agent = MinimaxAgent(depth=depth, randomize=randomize, noise_level=noise_level)
     all_experiences: list[Experience] = []
 
     print(f"Generating heuristic data for {num_games} games...")

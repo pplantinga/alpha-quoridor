@@ -7,10 +7,11 @@ from pathlib import Path
 # Add src to sys.path to allow imports if running as a script
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
+from play_human import parse_input, print_status, render_board
+
 from agent.minimax_agent import MinimaxAgent
 from game.board import initial_state
 from game.rules import apply_move, legal_moves
-from play_human import parse_input, print_status, render_board
 
 
 def get_human_move(state) -> tuple:

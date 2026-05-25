@@ -43,9 +43,10 @@ def main() -> None:
     else:
         print(f"Warning: Bootstrap config {bootstrap_config_path} not found. Using defaults.")
         b_config = {
-            "minimax_priming_games": 50,
+            "minimax_priming_games": 100,
             "minimax_depth": 2,
-            "wall_curriculum": [[1, 0], [10, 2], [20, 5], [40, 10]],
+            "minimax_noise": 1.0,
+            "wall_curriculum": [[1, 3], [10, 5], [20, 7], [40, 10]],
             "epochs": 100
         }
 
@@ -64,12 +65,15 @@ def main() -> None:
     if isinstance(num_priming, (int, float, str)) and int(num_priming) > 0 and len(trainer.buffer) == 0:
         n_priming = int(num_priming)
         depth_val = b_config.get("minimax_depth", 2)
+        noise_val = b_config.get("minimax_noise", 1.0)
         n_depth = int(depth_val) if isinstance(depth_val, (int, str)) else 2
+        n_noise = float(noise_val) if isinstance(noise_val, (float, int)) else 1.0
         print(f"Priming buffer with {n_priming} heuristic games (depth {n_depth})...")
         priming_exps = generate_heuristic_data(
             config=config,
             num_games=n_priming,
-            depth=n_depth
+            depth=n_depth,
+            noise_level=n_noise,
         )
         for exp in priming_exps:
             trainer.buffer.add(*exp)

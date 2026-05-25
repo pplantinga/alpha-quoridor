@@ -1,6 +1,7 @@
 """Minimax Agent for Quoridor."""
 
 import math
+import random
 
 from game.board import Move, QuoridorState
 from game.rules import a_star_path, apply_move, legal_moves
@@ -9,8 +10,10 @@ from game.rules import a_star_path, apply_move, legal_moves
 class MinimaxAgent:
     """Agent that selects moves using Minimax with Alpha-Beta pruning."""
 
-    def __init__(self, depth: int = 2):
+    def __init__(self, depth: int = 2, randomize: bool = True, noise_level: float = 0.0):
         self.depth = depth
+        self.randomize = randomize
+        self.noise_level = noise_level
 
     def select_move(self, state: QuoridorState) -> Move:
         """Select the best move using minimax search."""
@@ -20,7 +23,7 @@ class MinimaxAgent:
         if not moves:
             raise RuntimeError("No legal moves available.")
 
-        best_move = moves[0]
+        best_moves = [moves[0]]
         best_value = -math.inf
         alpha = -math.inf
         beta = math.inf
@@ -30,10 +33,14 @@ class MinimaxAgent:
             value = self._minimax(next_state, self.depth - 1, alpha, beta, False, player)
             if value > best_value:
                 best_value = value
-                best_move = move
+                best_moves = [move]
+            elif value == best_value:
+                best_moves.append(move)
             alpha = max(alpha, best_value)
 
-        return best_move
+        if self.randomize:
+            return random.choice(best_moves)
+        return best_moves[0]
 
     def _minimax(
         self,
@@ -104,23 +111,24 @@ class MinimaxAgent:
             else:
                 return -10000.0
 
-        p0_path = a_star_path(state, 0)
-        p1_path = a_star_path(state, 1)
+        p0 = original_player
+        p1 = original_player ^ 1
+
+        p0_path = a_star_path(state, p0)
+        p1_path = a_star_path(state, p1)
 
         # fallback to board size if no path found (should not happen in legal states)
         p0_len = len(p0_path) if p0_path else state.board_size * state.board_size
         p1_len = len(p1_path) if p1_path else state.board_size * state.board_size
 
-        if original_player == 0:
-            score = (p1_len - p0_len) * 10
-        else:
-            score = (p0_len - p1_len) * 10
+        # Maximize opponent path and minimize own
+        # Also slight bonus for having as many or more walls
+        score = (p1_len - p0_len)
+        if state.walls_remaining[p0] >= state.walls_remaining[p1]:
+            score += 0.5
 
-        # Wall penalty: severe penalty for running out of walls
-        if state.walls_remaining[original_player] == 0:
-            score -= 20
+        final_score = float(score)
+        if self.noise_level > 0:
+            final_score += random.uniform(-self.noise_level, self.noise_level)
 
-        # Wall bonus: slight bonus for having more walls than opponent?
-        # Actually user just said "penalty for zero walls left".
-
-        return float(score)
+        return final_score

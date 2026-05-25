@@ -1,8 +1,9 @@
 # Quoridor Bootstrap Configuration
 
 # Phase 1: Minimax Priming
-minimax_priming_games: 20
+minimax_priming_games: 100
 minimax_depth: 4
+minimax_noise: 1.0
 
 # Phase 2: Wall Curriculum
 # Format: [ [start_epoch, walls_per_player], ... ]
