@@ -47,23 +47,23 @@ class Trainer:
 
         self.optimizer.zero_grad()
 
-        # Forward pass
-        pred_policy_logits, pred_value = self.network(state_batch)
+        # Forward pass with AMP
+        with torch.amp.autocast(device_type=self.device.type, enabled=(self.device.type == "cuda")):
+            pred_policy_logits, pred_value = self.network(state_batch)
 
-        # Value loss: Mean squared error
-        value_loss = F.mse_loss(pred_value, value_batch)
+            # Value loss: Mean squared error
+            value_loss = F.mse_loss(pred_value, value_batch)
 
-        # Policy loss: Cross entropy
-        # policy_batch represents target probabilities.
-        # F.cross_entropy expects class indices or probabilities
-        policy_loss = F.cross_entropy(pred_policy_logits, policy_batch)
+            # Policy loss: Cross entropy
+            policy_loss = F.cross_entropy(pred_policy_logits, policy_batch)
 
-        # Total loss
-        loss = value_loss + policy_loss
+            # Total loss
+            loss = value_loss + policy_loss
 
-        # Backward pass
-        loss.backward()
-        self.optimizer.step()
+        # Backward pass with Scaling
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
         return {
             "loss": loss.item(),

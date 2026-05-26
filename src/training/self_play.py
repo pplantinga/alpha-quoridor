@@ -88,7 +88,8 @@ def run_self_play_games_batched(
                 [pending_encoded[i] for i in game_indices], dim=0
             ).to(device)  # (K, 9, N, N)
 
-            policy_batch, value_batch = network(batch)
+            with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
+                policy_batch, value_batch = network(batch)
             # policy_batch: (K, 3*N*N), value_batch: (K, 1)
 
             # Distribute results back and advance generators

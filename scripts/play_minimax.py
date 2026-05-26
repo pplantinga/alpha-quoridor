@@ -4,10 +4,13 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to sys.path to allow imports if running as a script
-sys.path.append(str(Path(__file__).parent.parent / "src"))
-
-from play_human import parse_input, print_status, render_board
+# Add current dir to path for play_human import
+sys.path.append(str(Path(__file__).parent))
+from play_human import (  # ty: ignore[unresolved-import]
+    parse_input,
+    print_status,
+    render_board,
+)
 
 from agent.minimax_agent import MinimaxAgent
 from game.board import initial_state
