@@ -143,8 +143,41 @@ def run_self_play_games_batched(
                 else:
                     winner = new_state.winner
                     assert winner is not None
-                    for s_t, p_t, player in histories[idx]:
-                        v = 1.0 if player == winner else -1.0
+
+
+                    # Pre-calculate distances for the final state to handle the last move
+                    final_encoded = encode_state(new_state)
+
+                    for i, (s_t, p_t, player) in enumerate(histories[idx]):
+                        # 1. Final outcome
+                        outcome_v = 1.0 if player == winner else -1.0
+
+                        # 2. Move penalty (encourages speed)
+                        move_penalty = -0.002 * (len(histories[idx]) - i)
+
+                        # 3. Progress reward (based on distance map change)
+                        progress_reward = 0.0
+
+                        # Get the "after" state for this move
+                        if i < len(histories[idx]) - 1:
+                            next_s_t = histories[idx][i+1][0]
+                        else:
+                            next_s_t = final_encoded
+
+                        # In s_t (canonical), current player is at channel 0, distance map is channel 7
+                        curr_pos_idx = torch.argmax(s_t[0].view(-1))
+                        curr_dist = s_t[7].view(-1)[curr_pos_idx].item()
+
+                        # In next_s_t (canonical), the player who moved is now the opponent!
+                        # Their position is in channel 1, and their distance map is in channel 8.
+                        next_pos_idx = torch.argmax(next_s_t[1].view(-1))
+                        next_dist = next_s_t[8].view(-1)[next_pos_idx].item()
+
+                        # dist_diff is positive if distance to goal decreased
+                        dist_diff = curr_dist - next_dist
+                        progress_reward = 0.01 * dist_diff
+
+                        v = outcome_v + move_penalty + progress_reward
                         all_experiences.append((s_t, p_t, v))
             else:
                 still_active.append(idx)

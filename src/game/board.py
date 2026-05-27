@@ -31,8 +31,8 @@ class QuoridorState:
 def initial_state(board_size: int, walls_per_player: int) -> QuoridorState:
     """Return the starting state for a game with the given parameters.
 
-    Player 0 starts at the top-centre and must reach row (board_size - 1).
-    Player 1 starts at the bottom-centre and must reach row 0.
+    Player 0 starts at the bottom-centre (row board_size-1) and must reach row 0 (top).
+    Player 1 starts at the top-centre (row 0) and must reach row board_size-1 (bottom).
     """
     mid = board_size // 2
     return QuoridorState(

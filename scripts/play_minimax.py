@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Add current dir to path for play_human import
 sys.path.append(str(Path(__file__).parent))
-from play_human import (  # ty: ignore[unresolved-import]
+from play_human import (
     parse_input,
     print_status,
     render_board,

@@ -2,7 +2,7 @@
 
 # Phase 1: Minimax Priming
 minimax_priming_games: 100
-minimax_depth: 4
+minimax_depth: 3
 minimax_noise: 1.0
 
 # Phase 2: Wall Curriculum

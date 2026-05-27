@@ -3,7 +3,7 @@ walls_per_player: 10
 
 model:
   hidden_dim: 256
-  num_blocks: 6
+  num_blocks: 8
   use_compile: true
 
 training:
@@ -15,7 +15,7 @@ training:
   num_workers: 12
 
 mcts:
-  num_simulations: 400
+  num_simulations: 800
   c_puct: 1.5
   temperature: 1.0
   dirichlet_noise_alpha: 0.3

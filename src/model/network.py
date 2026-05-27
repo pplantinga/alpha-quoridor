@@ -107,6 +107,8 @@ class QuoridorNet(nn.Module):
 
 def encode_state(state: QuoridorState) -> torch.Tensor:
     """Encode a QuoridorState into a 9-channel tensor.
+    The representation is canonicalized such that the current player is always
+    moving 'Up' (towards row 0).
 
     Returns:
         Tensor of shape (9, N, N)
@@ -115,30 +117,50 @@ def encode_state(state: QuoridorState) -> torch.Tensor:
     n = state.board_size
     tensor_np = np.zeros((9, n, n), dtype=np.float32)
 
-    # 0: P0 position
-    r0, c0 = state.player_pos[0]
-    tensor_np[0, r0, c0] = 1.0
+    cp = state.current_player
+    opp = 1 - cp
 
-    # 1: P1 position
-    r1, c1 = state.player_pos[1]
-    tensor_np[1, r1, c1] = 1.0
+    def flip_row(r):
+        return (n - 1) - r if cp == 1 else r
+
+    def flip_wall_row(r):
+        return (n - 2) - r if cp == 1 else r
+
+    # 0: Current player position, 1: Opponent position
+    r_cp, c_cp = state.player_pos[cp]
+    tensor_np[0, flip_row(r_cp), c_cp] = 1.0
+
+    r_opp, c_opp = state.player_pos[opp]
+    tensor_np[1, flip_row(r_opp), c_opp] = 1.0
 
     # 2: H walls, 3: V walls
     for orient, r, c in state.placed_walls:
-        channel = 2 if orient == "h" else 3
-        tensor_np[channel, r, c] = 1.0
+        if orient == "h":
+            tensor_np[2, flip_wall_row(r), c] = 1.0
+        else:
+            # Vertical wall spans rows r and r+1. Coordinates after flip: (n-1-r) and (n-2-r).
+            # The top row of the flipped wall is n-2-r.
+            v_row = (n - 2) - r if cp == 1 else r
+            tensor_np[3, v_row, c] = 1.0
 
-    # 4: Current player turn
-    if state.current_player == 0:
-        tensor_np[4, :, :] = 1.0
+    # 4: Turn indicator (canonical: always set to 1.0 for the current player's perspective)
+    tensor_np[4, :, :] = 1.0
 
     # 5, 6: Walls remaining normalized
     max_walls = max(1, state.walls_per_player)
-    tensor_np[5, :, :] = state.walls_remaining[0] / max_walls
-    tensor_np[6, :, :] = state.walls_remaining[1] / max_walls
+    tensor_np[5, :, :] = state.walls_remaining[cp] / max_walls
+    tensor_np[6, :, :] = state.walls_remaining[opp] / max_walls
 
     # 7, 8: Distance maps (high-performance bitboard version)
-    tensor_np[7:9, :, :] = compute_distance_maps(state).numpy()
+    # Channel 7: Current player distance map, Channel 8: Opponent distance map
+    dist_maps = compute_distance_maps(state)
+    tensor_np[7, :, :] = dist_maps[cp].numpy()
+    tensor_np[8, :, :] = dist_maps[opp].numpy()
+
+    # If we are Player 1, the distance maps also need to be flipped vertically
+    if cp == 1:
+        tensor_np[7, :, :] = np.flip(tensor_np[7, :, :], axis=0)
+        tensor_np[8, :, :] = np.flip(tensor_np[8, :, :], axis=0)
 
     return torch.from_numpy(tensor_np)
 
@@ -193,15 +215,12 @@ def compute_distance_maps(state: QuoridorState) -> torch.Tensor:
                 break
 
             # Update distance map for newly reached cells
-            # We can use bit manipulation to find indices or just iterate over the 81 bits
-            # (Looping over 81 bits in Python is okay once per distance level)
             indices = [i for i in range(81) if (frontier >> i) & 1]
             for i in indices:
                 dist_maps[player, i // 9, i % 9] = d
 
             visited |= frontier
-
-    return torch.from_numpy(dist_maps / float(n * n))
+    return torch.from_numpy(dist_maps / float(n))
 
 
 def _compute_distance_maps_bfs(state: QuoridorState) -> torch.Tensor:
@@ -229,11 +248,11 @@ def _compute_distance_maps_bfs(state: QuoridorState) -> torch.Tensor:
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < n and 0 <= nc < n:
                     if not is_blocked(state, (r, c), direction_name):
-                        if dist_maps[player, nr, nc] > d + 1:
-                            dist_maps[player, nr, nc] = d + 1.0
-                            queue.append((nr, nc, d + 1))
+                            if dist_maps[player, nr, nc] > d + 1:
+                                dist_maps[player, nr, nc] = d + 1.0
+                                queue.append((nr, nc, d + 1))
 
-    return torch.from_numpy(dist_maps / float(n * n))
+    return torch.from_numpy(dist_maps / float(n))
 
 
 def move_to_index(move: Move, board_size: int) -> int:
