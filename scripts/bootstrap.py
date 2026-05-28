@@ -61,7 +61,7 @@ def main() -> None:
         trainer.load_checkpoint(checkpoint_path)
 
     # --- Phase 1: Minimax Priming ---
-    num_priming = b_config.get("num_priming", 100)
+    num_priming = b_config.get("minimax_priming_games", 100)
     if isinstance(num_priming, (int, float, str)) and int(num_priming) > 0 and len(trainer.buffer) == 0:
         n_priming = int(num_priming)
         depth_val = b_config.get("minimax_depth", 2)
@@ -87,7 +87,7 @@ def main() -> None:
     print("Phase 2: Starting curriculum training loop...")
     epochs_val = b_config.get("epochs", 10)
     epochs = int(epochs_val) if isinstance(epochs_val, (int, str)) else 10
-    schedule = b_config.get("schedule", [])
+    schedule = b_config.get("wall_curriculum", [])
 
     try:
         for epoch in range(1, epochs + 1):

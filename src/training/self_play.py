@@ -18,6 +18,7 @@ from game.rules import apply_move
 from mcts.search import _SendType, _YieldType, run_mcts_generator
 from model.network import QuoridorNet, encode_state, move_to_index
 from training.buffer import Experience
+from training.reward_shaping import heuristic_value, step_shaping
 from utils.config import Config
 
 # ---------------------------------------------------------------------------
@@ -56,6 +57,13 @@ def run_self_play_games_batched(
     moves_played = [0] * num_games
 
     all_experiences: list[Experience] = []
+
+    # Reward shaping weights from config
+    rw = config.reward
+    progress_w   = rw.progress_weight
+    block_w      = rw.block_weight
+    draw_penalty = rw.draw_penalty
+    heuristic_w  = rw.draw_heuristic_w
 
     # -----------------------------------------------------------------------
     # Each game turn: run a complete MCTS search (batched), pick a move, advance
@@ -137,47 +145,40 @@ def run_self_play_games_batched(
             if new_state.is_terminal or moves_played[idx] >= max_moves or is_repetition:
                 # Finalise experiences for this game
                 if not new_state.is_terminal:
-                    # Timeout or repetition → draw
+                    # Timeout or repetition → use heuristic value instead of plain 0.
+                    # This gives the network a board-position gradient even for drawn
+                    # games, discouraging the back-and-forth oscillation pattern.
                     for s, p, _ in histories[idx]:
-                        all_experiences.append((s, p, 0.0))
+                        h = heuristic_value(s)
+                        v = float(draw_penalty + heuristic_w * h)
+                        v = max(-1.0, min(1.0, v))
+                        all_experiences.append((s, p, v))
                 else:
                     winner = new_state.winner
                     assert winner is not None
 
-
-                    # Pre-calculate distances for the final state to handle the last move
+                    # Pre-encode the final state so step_shaping can read it
                     final_encoded = encode_state(new_state)
 
                     for i, (s_t, p_t, player) in enumerate(histories[idx]):
-                        # 1. Final outcome
+                        # 1. Final outcome from this player's perspective
                         outcome_v = 1.0 if player == winner else -1.0
 
                         # 2. Move penalty (encourages speed)
                         move_penalty = -0.002 * (len(histories[idx]) - i)
 
-                        # 3. Progress reward (based on distance map change)
-                        progress_reward = 0.0
-
-                        # Get the "after" state for this move
+                        # 3. Minimax-style potential shaping:
+                        #    reward own progress AND opponent path lengthening.
+                        #    Both signals fire for walls, not just pawn moves.
                         if i < len(histories[idx]) - 1:
-                            next_s_t = histories[idx][i+1][0]
+                            next_s_t = histories[idx][i + 1][0]
                         else:
                             next_s_t = final_encoded
 
-                        # In s_t (canonical), current player is at channel 0, distance map is channel 7
-                        curr_pos_idx = torch.argmax(s_t[0].view(-1))
-                        curr_dist = s_t[7].view(-1)[curr_pos_idx].item()
+                        shaping = step_shaping(s_t, next_s_t, progress_w, block_w)
 
-                        # In next_s_t (canonical), the player who moved is now the opponent!
-                        # Their position is in channel 1, and their distance map is in channel 8.
-                        next_pos_idx = torch.argmax(next_s_t[1].view(-1))
-                        next_dist = next_s_t[8].view(-1)[next_pos_idx].item()
-
-                        # dist_diff is positive if distance to goal decreased
-                        dist_diff = curr_dist - next_dist
-                        progress_reward = 0.01 * dist_diff
-
-                        v = outcome_v + move_penalty + progress_reward
+                        v = float(outcome_v + move_penalty + shaping)
+                        v = max(-1.0, min(1.0, v))
                         all_experiences.append((s_t, p_t, v))
             else:
                 still_active.append(idx)
@@ -185,6 +186,7 @@ def run_self_play_games_batched(
         active = still_active
 
     return all_experiences
+
 
 
 # ---------------------------------------------------------------------------

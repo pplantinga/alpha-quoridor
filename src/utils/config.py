@@ -32,16 +32,46 @@ class MCTSConfig:
     dirichlet_noise_epsilon: float = 0.25
 
 
+@dataclass
+class RewardConfig:
+    """Weights that control the minimax-style reward shaping signal.
+
+    All weights can be tuned via the ``reward:`` section in any YAML config.
+
+    Attributes:
+        progress_weight:  Reward per unit decrease in the current player's
+                          shortest-path distance (normalized by board size).
+                          A 1-step pawn advance on a 9x9 board contributes
+                          progress_weight / 9 to the shaped reward.
+        block_weight:     Reward per unit *increase* in the opponent's
+                          shortest-path distance.  Non-zero for wall placements
+                          that don't move our pawn, fixing a gap in the old code.
+        draw_penalty:     Base value assigned to every position in a game that
+                          ends in a timeout or 3-fold repetition.  Slightly
+                          negative to discourage oscillation.
+        draw_heuristic_w: Weight of the minimax heuristic evaluation added on
+                          top of draw_penalty for draw/timeout positions, so the
+                          network still learns a board-position gradient even
+                          from drawn games.
+    """
+    progress_weight: float = 0.3
+    block_weight: float = 0.2
+    draw_penalty: float = -0.05
+    draw_heuristic_w: float = 0.4
+
+
 def _make_config(data: dict) -> "Config":
     model = ModelConfig(**data.get("model", {}))
     training = TrainingConfig(**data.get("training", {}))
     mcts = MCTSConfig(**data.get("mcts", {}))
+    reward = RewardConfig(**data.get("reward", {}))
     return Config(
         board_size=data.get("board_size", 9),
         walls_per_player=data.get("walls_per_player", 10),
         model=model,
         training=training,
         mcts=mcts,
+        reward=reward,
     )
 
 
@@ -52,6 +82,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     mcts: MCTSConfig = field(default_factory=MCTSConfig)
+    reward: RewardConfig = field(default_factory=RewardConfig)
 
 
 def load_config(path: Path) -> Config:

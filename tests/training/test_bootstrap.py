@@ -54,7 +54,8 @@ def test_minimax_data_generation():
     assert s.shape == (9, 3, 3)
     assert p.shape == (3 * 3 * 3,)
     assert isinstance(v, float)
-    assert v in [-1.0, 0.0, 1.0]
+    # Values are now continuous in [-1, 1] due to minimax-style reward shaping
+    assert -1.0 <= v <= 1.0, f"Bootstrap value out of range: {v}"
 
 if __name__ == "__main__":
     test_curriculum_logic()

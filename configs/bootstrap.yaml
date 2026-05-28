@@ -15,3 +15,9 @@ wall_curriculum:
   - [40, 10]  # Epoch 40+: Full walls
 
 epochs: 100
+
+reward:
+  progress_weight: 0.3
+  block_weight: 0.2
+  draw_penalty: -0.05
+  draw_heuristic_w: 0.4

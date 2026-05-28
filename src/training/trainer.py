@@ -52,7 +52,9 @@ class Trainer:
             pred_policy_logits, pred_value = self.network(state_batch)
 
             # Value loss: Mean squared error
-            value_loss = F.mse_loss(pred_value, value_batch)
+            # Clamp targets to [-1, 1] as a safety guard for shaped rewards
+            value_batch_clamped = value_batch.clamp(-1.0, 1.0)
+            value_loss = F.mse_loss(pred_value, value_batch_clamped)
 
             # Policy loss: Cross entropy
             policy_loss = F.cross_entropy(pred_policy_logits, policy_batch)

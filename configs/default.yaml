@@ -20,3 +20,9 @@ mcts:
   temperature: 1.0
   dirichlet_noise_alpha: 0.3
   dirichlet_noise_epsilon: 0.25
+
+reward:
+  progress_weight: 0.3    # reward for reducing own path length per step
+  block_weight: 0.2       # reward for increasing opponent path length per step
+  draw_penalty: -0.05     # base value for draw/timeout positions (discourages oscillation)
+  draw_heuristic_w: 0.4   # heuristic multiplier for draw positions
