@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--config", type=str, default="configs/default.yaml")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/best.pt")
+    parser.add_argument("--epochs", type=int, default=100)
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -45,7 +46,7 @@ def main() -> None:
         # We don't have an outer loop over iterations here,
         # run_iteration itself loops over training.num_iterations batches
         # We'll put a small outer loop just to save intermediate checkpoints.
-        for epoch in range(1, 101):
+        for epoch in range(1, args.epochs + 1):
             print(f"\n--- Epoch {epoch} ---")
             losses = trainer.run_iteration(epoch=epoch)
             print(f"Losses: Total={losses['loss']:.4f}, Policy={losses['policy_loss']:.4f}, Value={losses['value_loss']:.4f}")

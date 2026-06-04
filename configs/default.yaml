@@ -12,7 +12,7 @@ training:
   lr: 0.001
   num_iterations: 100
   buffer_size: 30000
-  num_workers: 12
+  num_workers: 15
   decay_epochs: 40
 
 mcts:
