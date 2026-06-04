@@ -13,16 +13,19 @@ training:
   num_iterations: 100
   buffer_size: 50000
   num_workers: 12
+  decay_epochs: 40
 
 mcts:
-  num_simulations: 800
+  num_simulations: 1200
   c_puct: 1.5
-  temperature: 1.0
+  temperature: 0.7
   dirichlet_noise_alpha: 0.3
   dirichlet_noise_epsilon: 0.25
+  temp_decay_move: 15
 
 reward:
-  progress_weight: 0.3    # reward for reducing own path length per step
-  block_weight: 0.2       # reward for increasing opponent path length per step
+  progress_weight: 0.0    # disabled for pure targets under Option 1
+  block_weight: 0.0       # disabled for pure targets under Option 1
   draw_penalty: -0.05     # base value for draw/timeout positions (discourages oscillation)
   draw_heuristic_w: 0.4   # heuristic multiplier for draw positions
+  move_penalty_weight: 0.0 # disabled for 100% pure targets

@@ -21,6 +21,7 @@ class TrainingConfig:
     num_iterations: int = 100
     buffer_size: int = 50000
     num_workers: int = 4
+    decay_epochs: int = 40
 
 
 @dataclass
@@ -30,6 +31,7 @@ class MCTSConfig:
     temperature: float = 1.0
     dirichlet_noise_alpha: float = 0.3
     dirichlet_noise_epsilon: float = 0.25
+    temp_decay_move: int = 15
 
 
 @dataclass
@@ -53,11 +55,13 @@ class RewardConfig:
                           top of draw_penalty for draw/timeout positions, so the
                           network still learns a board-position gradient even
                           from drawn games.
+        move_penalty_weight: Weight for the step penalty to encourage faster game finishes.
     """
     progress_weight: float = 0.3
     block_weight: float = 0.2
     draw_penalty: float = -0.05
     draw_heuristic_w: float = 0.4
+    move_penalty_weight: float = 0.002
 
 
 def _make_config(data: dict) -> "Config":

@@ -31,6 +31,7 @@ def run_self_play_games_batched(
     config: Config,
     num_games: int,
     device: torch.device = torch.device("cpu"),
+    epoch: int = 1,
 ) -> list[Experience]:
     """Generate `num_games` self-play games using batched GPU inference.
 
@@ -65,6 +66,12 @@ def run_self_play_games_batched(
     draw_penalty = rw.draw_penalty
     heuristic_w  = rw.draw_heuristic_w
 
+    # Compute dynamic parameters for MHG and temperature decay
+    decay_epochs = getattr(config.training, "decay_epochs", 40)
+    lambda_val = max(0.0, 1.0 - (epoch - 1) / max(1, decay_epochs))
+    temp_decay_move = getattr(config.mcts, "temp_decay_move", 15)
+    move_penalty_weight = getattr(rw, "move_penalty_weight", 0.002)
+
     # -----------------------------------------------------------------------
     # Each game turn: run a complete MCTS search (batched), pick a move, advance
     # -----------------------------------------------------------------------
@@ -77,7 +84,15 @@ def run_self_play_games_batched(
 
         for idx in active:
             state_counts[idx][game_states[idx]] += 1
-            gen = run_mcts_generator(game_states[idx], config.mcts, training=True)
+            # Temperature decay: set to 0.0 after 15 moves to play optimally
+            curr_temp = config.mcts.temperature if moves_played[idx] < temp_decay_move else 0.0
+            gen = run_mcts_generator(
+                game_states[idx],
+                config.mcts,
+                training=True,
+                lambda_val=lambda_val,
+                temperature=curr_temp,
+            )
             generators[idx] = gen
             # Prime the generator — get its first yield
             try:
@@ -165,17 +180,17 @@ def run_self_play_games_batched(
                         outcome_v = 1.0 if player == winner else -1.0
 
                         # 2. Move penalty (encourages speed)
-                        move_penalty = -0.002 * (len(histories[idx]) - i)
+                        move_penalty = -move_penalty_weight * (len(histories[idx]) - i)
 
-                        # 3. Minimax-style potential shaping:
-                        #    reward own progress AND opponent path lengthening.
-                        #    Both signals fire for walls, not just pawn moves.
-                        if i < len(histories[idx]) - 1:
-                            next_s_t = histories[idx][i + 1][0]
+                        # 3. Minimax-style potential shaping (only if active)
+                        if progress_w > 0.0 or block_w > 0.0:
+                            if i < len(histories[idx]) - 1:
+                                next_s_t = histories[idx][i + 1][0]
+                            else:
+                                next_s_t = final_encoded
+                            shaping = step_shaping(s_t, next_s_t, progress_w, block_w)
                         else:
-                            next_s_t = final_encoded
-
-                        shaping = step_shaping(s_t, next_s_t, progress_w, block_w)
+                            shaping = 0.0
 
                         v = float(outcome_v + move_penalty + shaping)
                         v = max(-1.0, min(1.0, v))
@@ -197,9 +212,10 @@ def run_self_play_game(
     network: QuoridorNet,
     config: Config,
     device: torch.device = torch.device("cpu"),
+    epoch: int = 1,
 ) -> list[Experience]:
     """Convenience wrapper: run exactly one self-play game via the batched path."""
-    return run_self_play_games_batched(network, config, num_games=1, device=device)
+    return run_self_play_games_batched(network, config, num_games=1, device=device, epoch=epoch)
 
 
 def _self_play_worker(
@@ -208,6 +224,7 @@ def _self_play_worker(
     num_games: int,
     device_str: str,
     result_queue: mp.Queue,
+    epoch: int = 1,
 ):
     """Worker process for self-play."""
     device = torch.device(device_str)
@@ -215,7 +232,7 @@ def _self_play_worker(
     network = QuoridorNet(config.board_size, config.model).to(device)
     network.load_state_dict(network_state_dict)
 
-    experiences = run_self_play_games_batched(network, config, num_games, device)
+    experiences = run_self_play_games_batched(network, config, num_games, device, epoch=epoch)
 
     # Convert experiences to numpy for stable pickling/transfer
     picklable_exps = []

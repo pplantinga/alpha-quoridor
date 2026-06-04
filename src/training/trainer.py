@@ -24,6 +24,11 @@ class Trainer:
         self.optimizer = optim.Adam(self.network.parameters(), lr=config.training.lr)
         self.buffer = ExperienceBuffer(max_size=config.training.buffer_size)
         self.scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=100,  # Total epochs
+            eta_min=1e-5
+        )
 
         if config.model.use_compile:
             try:
@@ -92,7 +97,7 @@ class Trainer:
             print(f"Curriculum Update: Epoch {epoch}, setting walls_per_player to {applicable_walls}")
             self.config.walls_per_player = applicable_walls
 
-    def run_iteration(self) -> dict[str, float]:
+    def run_iteration(self, epoch: int = 1) -> dict[str, float]:
         """Run one iteration of self-play data generation and training."""
         # 1. Self-Play --- run all games at once, batching GPU inference across trees
         num_games = self.config.training.num_self_play_games
@@ -105,6 +110,7 @@ class Trainer:
                 self.config,
                 num_games=num_games,
                 device=self.device,
+                epoch=epoch,
             )
         else:
             # Use multiprocessing
@@ -126,7 +132,7 @@ class Trainer:
                     continue
                 p = mp.Process(
                     target=_self_play_worker,
-                    args=(state_dict, self.config, worker_games, self.device.type, result_queue)
+                    args=(state_dict, self.config, worker_games, self.device.type, result_queue, epoch)
                 )
                 p.start()
                 processes.append(p)
@@ -164,6 +170,11 @@ class Trainer:
         for k in avg_losses:
             avg_losses[k] /= n_iters
 
+        # Step the learning rate scheduler once per epoch/iteration
+        self.scheduler.step()
+        curr_lr = self.optimizer.param_groups[0]["lr"]
+        print(f"Scheduler Step: Learning Rate set to {curr_lr:.6f}")
+
         return avg_losses
 
     def save_checkpoint(self, path: Path) -> None:
@@ -172,6 +183,7 @@ class Trainer:
         torch.save({
             "model_state_dict": self.network.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
         }, path)
 
     def load_checkpoint(self, path: Path) -> None:
@@ -196,3 +208,5 @@ class Trainer:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if "scaler_state_dict" in checkpoint and self.scaler:
             self.scaler.load_state_dict(checkpoint["scaler_state_dict"])
+        if "scheduler_state_dict" in checkpoint and hasattr(self, "scheduler"):
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])

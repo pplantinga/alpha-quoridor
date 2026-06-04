@@ -97,7 +97,7 @@ def main() -> None:
             if isinstance(schedule, list):
                 trainer.update_curriculum(epoch, schedule)
 
-            losses = trainer.run_iteration()
+            losses = trainer.run_iteration(epoch)
             print(f"Losses: Total={losses['loss']:.4f}, Policy={losses['policy_loss']:.4f}, Value={losses['value_loss']:.4f}")
 
             trainer.save_checkpoint(checkpoint_path)

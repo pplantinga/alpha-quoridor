@@ -40,6 +40,8 @@ def run_mcts_generator(
     initial_state: QuoridorState,
     config: MCTSConfig,
     training: bool = False,
+    lambda_val: float = 0.0,
+    temperature: float | None = None,
 ) -> Generator[_YieldType, _SendType, dict[Move, float]]:
     """Generator-based MCTS.
 
@@ -53,7 +55,7 @@ def run_mcts_generator(
     # ------------------------------------------------------------------
     # Expand root (first network call)
     # ------------------------------------------------------------------
-    value = yield from _expand_generator(root)
+    value = yield from _expand_generator(root, lambda_val=lambda_val)
 
     if training and root.is_expanded:
         _add_dirichlet_noise(root, config.dirichlet_noise_alpha, config.dirichlet_noise_epsilon)
@@ -76,7 +78,7 @@ def run_mcts_generator(
             assert node.state.winner is not None
             value = 1.0 if node.state.winner == node.state.current_player else -1.0
         else:
-            value = yield from _expand_generator(node)
+            value = yield from _expand_generator(node, lambda_val=lambda_val)
 
         # 3. Backup
         _backup(search_path, value)
@@ -93,7 +95,7 @@ def run_mcts_generator(
         return {m: prob for m in moves}
 
     if training:
-        temp = config.temperature
+        temp = temperature if temperature is not None else config.temperature
         if temp == 0.0:
             best = max(visits, key=visits.__getitem__)
             return {m: 1.0 if m == best else 0.0 for m in visits}
@@ -108,6 +110,7 @@ def run_mcts_generator(
 
 def _expand_generator(
     node: MCTSNode,
+    lambda_val: float = 0.0,
 ) -> Generator[_YieldType, _SendType, float]:
     """Sub-generator that yields an encoded-state tensor and expands the node.
 
@@ -120,6 +123,12 @@ def _expand_generator(
     # Yield the raw encoded tensor (no batch dim, no device move — caller handles that)
     encoded = encode_state(node.state)
     policy_logits, value = yield encoded  # <-- suspension point
+
+    if lambda_val > 0.0:
+        from training.reward_shaping import heuristic_value
+        h_val = float(heuristic_value(encoded))
+        h_val = max(-1.0, min(1.0, h_val))
+        value = (1.0 - lambda_val) * value + lambda_val * h_val
 
     board_size = node.state.board_size
     valid_indices = [move_to_index(m, board_size) for m in valid_moves]
@@ -144,13 +153,15 @@ def run_mcts(
     config: MCTSConfig,
     device: torch.device = torch.device("cpu"),
     training: bool = False,
+    lambda_val: float = 0.0,
+    temperature: float | None = None,
 ) -> dict[Move, float]:
     """Run MCTS for a single game, evaluating nodes one-at-a-time (legacy path).
 
     For high-throughput training, prefer the batched path in self_play.py.
     """
     network.eval()
-    gen = run_mcts_generator(initial_state, config, training=training)
+    gen = run_mcts_generator(initial_state, config, training=training, lambda_val=lambda_val, temperature=temperature)
 
     result: dict[Move, float] | None = None
     value_to_send: _SendType | None = None
