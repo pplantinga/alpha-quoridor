@@ -47,7 +47,7 @@ def main() -> None:
         # We'll put a small outer loop just to save intermediate checkpoints.
         for epoch in range(1, 101):
             print(f"\n--- Epoch {epoch} ---")
-            losses = trainer.run_iteration()
+            losses = trainer.run_iteration(epoch=epoch)
             print(f"Losses: Total={losses['loss']:.4f}, Policy={losses['policy_loss']:.4f}, Value={losses['value_loss']:.4f}")
 
             trainer.save_checkpoint(checkpoint_path)

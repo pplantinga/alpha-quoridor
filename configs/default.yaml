@@ -3,20 +3,20 @@ walls_per_player: 10
 
 model:
   hidden_dim: 256
-  num_blocks: 8
+  num_blocks: 16
   use_compile: true
 
 training:
-  num_self_play_games: 400
+  num_self_play_games: 512
   batch_size: 256
   lr: 0.001
   num_iterations: 100
-  buffer_size: 50000
+  buffer_size: 30000
   num_workers: 12
   decay_epochs: 40
 
 mcts:
-  num_simulations: 1200
+  num_simulations: 1024
   c_puct: 1.5
   temperature: 0.7
   dirichlet_noise_alpha: 0.3

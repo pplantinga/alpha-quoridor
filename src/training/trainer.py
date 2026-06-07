@@ -24,9 +24,12 @@ class Trainer:
         self.optimizer = optim.Adam(self.network.parameters(), lr=config.training.lr)
         self.buffer = ExperienceBuffer(max_size=config.training.buffer_size)
         self.scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
+        # Scheduler is constructed here with last_epoch=-1 (fresh start).
+        # load_checkpoint() will restore the scheduler state dict so that
+        # resuming training does not reset the LR back to its initial value.
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
-            T_max=100,  # Total epochs
+            T_max=200,  # Total epochs across bootstrap + main training
             eta_min=1e-5
         )
 
@@ -61,14 +64,19 @@ class Trainer:
             value_batch_clamped = value_batch.clamp(-1.0, 1.0)
             value_loss = F.mse_loss(pred_value, value_batch_clamped)
 
-            # Policy loss: Cross entropy
-            policy_loss = F.cross_entropy(pred_policy_logits, policy_batch)
+            # Policy loss: explicit soft-label cross-entropy (KL divergence).
+            # Using -(target * log_softmax).sum() is unambiguous with soft MCTS
+            # distributions and avoids PyTorch version sensitivity with F.cross_entropy.
+            log_probs = F.log_softmax(pred_policy_logits, dim=-1)
+            policy_loss = -(policy_batch * log_probs).sum(dim=-1).mean()
 
             # Total loss
             loss = value_loss + policy_loss
 
-        # Backward pass with Scaling
+        # Backward pass with Scaling + gradient clipping
         self.scaler.scale(loss).backward()
+        self.scaler.unscale_(self.optimizer)
+        torch.nn.utils.clip_grad_norm_(self.network.parameters(), max_norm=1.0)
         self.scaler.step(self.optimizer)
         self.scaler.update()
 
