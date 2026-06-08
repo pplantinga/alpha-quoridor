@@ -256,7 +256,12 @@ def _compute_distance_maps_bfs(state: QuoridorState) -> torch.Tensor:
 
 
 def move_to_index(move: Move, board_size: int) -> int:
-    """Convert a Move tuple to a flat action index in [0, 3*N*N - 1]."""
+    """Convert a Move tuple to a flat action index in [0, 3*N*N - 1].
+
+    Uses raw (un-flipped) board coordinates. Only correct for Player 0 or
+    contexts that don't use canonical state encoding. Prefer
+    ``canonical_move_to_index`` for training and MCTS.
+    """
     n = board_size
     if move[0] == "move":
         _, r, c = move
@@ -268,8 +273,33 @@ def move_to_index(move: Move, board_size: int) -> int:
     raise ValueError(f"Unknown move type: {move}")
 
 
+def canonical_move_to_index(move: Move, board_size: int, current_player: int) -> int:
+    """Convert a Move to a flat action index using canonical (flipped) coordinates.
+
+    Applies the same vertical flip that ``encode_state`` applies to the board
+    for Player 1, so the policy action space is consistent with the canonical
+    state encoding seen by the network.
+
+    For Player 0 (no flip) this is identical to ``move_to_index``.
+    For Player 1 rows are mirrored: pawn rows via ``(n-1-r)``, wall rows via
+    ``(n-2-r)``, matching ``encode_state``'s ``flip_row`` / ``flip_wall_row``.
+    """
+    n = board_size
+    if move[0] == "move":
+        _, r, c = move
+        r_can = (n - 1 - r) if current_player == 1 else r
+        return 0 * n * n + r_can * n + c
+    elif move[0] == "wall":
+        _, r, c, orient = move
+        # Wall rows run 0 .. n-2; flip mirrors them within that range.
+        r_can = (n - 2 - r) if current_player == 1 else r
+        channel = 1 if orient == "h" else 2
+        return channel * n * n + r_can * n + c
+    raise ValueError(f"Unknown move type: {move}")
+
+
 def index_to_move(index: int, board_size: int) -> Move:
-    """Convert a flat action index back to a Move tuple."""
+    """Convert a flat action index back to a Move tuple (raw coordinates)."""
     n = board_size
     channel = index // (n * n)
     rem = index % (n * n)
@@ -282,4 +312,28 @@ def index_to_move(index: int, board_size: int) -> Move:
         return ("wall", r, c, "h")
     elif channel == 2:
         return ("wall", r, c, "v")
+    raise ValueError(f"Index {index} out of bounds for board size {n}")
+
+
+def canonical_index_to_move(index: int, board_size: int, current_player: int) -> Move:
+    """Convert a canonical action index back to a raw Move tuple.
+
+    Inverse of ``canonical_move_to_index``: un-flips the canonical row back to
+    raw board coordinates so the returned Move can be applied to a QuoridorState.
+    """
+    n = board_size
+    channel = index // (n * n)
+    rem = index % (n * n)
+    r_can = rem // n
+    c = rem % n
+
+    if channel == 0:
+        r_raw = (n - 1 - r_can) if current_player == 1 else r_can
+        return ("move", r_raw, c)
+    elif channel == 1:
+        r_raw = (n - 2 - r_can) if current_player == 1 else r_can
+        return ("wall", r_raw, c, "h")
+    elif channel == 2:
+        r_raw = (n - 2 - r_can) if current_player == 1 else r_can
+        return ("wall", r_raw, c, "v")
     raise ValueError(f"Index {index} out of bounds for board size {n}")

@@ -3,7 +3,14 @@
 import torch
 
 from game.board import QuoridorState, initial_state
-from model.network import QuoridorNet, encode_state, index_to_move, move_to_index
+from model.network import (
+    QuoridorNet,
+    canonical_index_to_move,
+    canonical_move_to_index,
+    encode_state,
+    index_to_move,
+    move_to_index,
+)
 from utils.config import ModelConfig
 
 
@@ -93,3 +100,47 @@ def test_move_conversion() -> None:
     idx3 = move_to_index(m3, n)
     assert idx3 == 2 * 25 + 0 * 5 + 0
     assert index_to_move(idx3, n) == m3
+
+
+def test_canonical_move_conversion() -> None:
+    n = 5
+
+    # Player 0 should be identical to raw
+    pawn_p0 = ("move", 2, 3)
+    assert canonical_move_to_index(pawn_p0, n, 0) == move_to_index(pawn_p0, n)
+    assert canonical_index_to_move(canonical_move_to_index(pawn_p0, n, 0), n, 0) == pawn_p0
+
+    # Player 1 pawn move: row 1 on board size 5 becomes canonical row (5 - 1 - 1) = 3.
+    pawn_p1 = ("move", 1, 3)
+    idx_pawn_p1 = canonical_move_to_index(pawn_p1, n, 1)
+    assert idx_pawn_p1 == 0 * 25 + 3 * 5 + 3
+    assert canonical_index_to_move(idx_pawn_p1, n, 1) == pawn_p1
+
+    # Player 1 horizontal wall: row 1 on board size 5 becomes canonical row (5 - 2 - 1) = 2.
+    wall_h_p1 = ("wall", 1, 2, "h")
+    idx_wall_h_p1 = canonical_move_to_index(wall_h_p1, n, 1)
+    assert idx_wall_h_p1 == 1 * 25 + 2 * 5 + 2
+    assert canonical_index_to_move(idx_wall_h_p1, n, 1) == wall_h_p1
+
+    # Player 1 vertical wall: row 0 on board size 5 becomes canonical row (5 - 2 - 0) = 3.
+    wall_v_p1 = ("wall", 0, 1, "v")
+    idx_wall_v_p1 = canonical_move_to_index(wall_v_p1, n, 1)
+    assert idx_wall_v_p1 == 2 * 25 + 3 * 5 + 1
+    assert canonical_index_to_move(idx_wall_v_p1, n, 1) == wall_v_p1
+
+    # Roundtrip check for all possible actions for both players
+    for p in (0, 1):
+        # Pawn moves
+        for r in range(n):
+            for c in range(n):
+                m = ("move", r, c)
+                idx = canonical_move_to_index(m, n, p)
+                assert canonical_index_to_move(idx, n, p) == m
+
+        # Walls (horizontal/vertical on a grid of size (n-1)x(n-1))
+        for r in range(n - 1):
+            for c in range(n - 1):
+                for orient in ("h", "v"):
+                    m = ("wall", r, c, orient)
+                    idx = canonical_move_to_index(m, n, p)
+                    assert canonical_index_to_move(idx, n, p) == m

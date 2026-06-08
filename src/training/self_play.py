@@ -16,7 +16,7 @@ import torch
 from game.board import initial_state
 from game.rules import apply_move
 from mcts.search import _SendType, _YieldType, run_mcts_generator
-from model.network import QuoridorNet, encode_state, move_to_index
+from model.network import QuoridorNet, canonical_move_to_index, encode_state
 from training.buffer import Experience
 from training.reward_shaping import heuristic_value, step_shaping
 from utils.config import Config
@@ -144,7 +144,7 @@ def run_self_play_games_batched(
             # Record experience for this turn
             policy_target = torch.zeros(3 * n * n, dtype=torch.float32)
             for move, prob in probs.items():
-                policy_target[move_to_index(move, n)] = prob
+                policy_target[canonical_move_to_index(move, n, state.current_player)] = prob
             histories[idx].append((encode_state(state), policy_target, state.current_player))
 
             # Sample action

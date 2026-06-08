@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from game.board import Move, QuoridorState
 from game.rules import legal_moves
 from mcts.node import MCTSNode
-from model.network import QuoridorNet, encode_state, move_to_index
+from model.network import QuoridorNet, canonical_move_to_index, encode_state
 from utils.config import MCTSConfig
 
 if TYPE_CHECKING:
@@ -131,7 +131,7 @@ def _expand_generator(
         value = (1.0 - lambda_val) * value + lambda_val * h_val
 
     board_size = node.state.board_size
-    valid_indices = [move_to_index(m, board_size) for m in valid_moves]
+    valid_indices = [canonical_move_to_index(m, board_size, node.state.current_player) for m in valid_moves]
     logits = policy_logits[valid_indices]
     probs = F.softmax(logits, dim=0).numpy()
 

@@ -7,7 +7,7 @@ import torch
 from agent.minimax_agent import MinimaxAgent
 from game.board import initial_state
 from game.rules import apply_move
-from model.network import encode_state, move_to_index
+from model.network import canonical_move_to_index, encode_state
 from training.buffer import Experience
 from training.reward_shaping import step_shaping
 from utils.config import Config
@@ -28,7 +28,7 @@ def _generate_single_heuristic_game(args) -> list[Experience]:
             break
 
         policy_target = torch.zeros(3 * config.board_size * config.board_size, dtype=torch.float32)
-        policy_target[move_to_index(move, config.board_size)] = 1.0
+        policy_target[canonical_move_to_index(move, config.board_size, state.current_player)] = 1.0
         history.append((encode_state(state), policy_target, state.current_player))
         state = apply_move(state, move)
 
