@@ -17,6 +17,7 @@ from game.board import initial_state
 from game.rules import apply_move
 from mcts.search import _SendType, _YieldType, run_mcts_generator
 from model.network import QuoridorNet, canonical_move_to_index, encode_state
+from training.augmentation import flip_experience
 from training.buffer import Experience
 from training.reward_shaping import heuristic_value, step_shaping
 from utils.config import Config
@@ -168,6 +169,7 @@ def run_self_play_games_batched(
                         v = float(draw_penalty + heuristic_w * h)
                         v = max(-1.0, min(1.0, v))
                         all_experiences.append((s, p, v))
+                        all_experiences.append(flip_experience(s, p, v, n))
                 else:
                     winner = new_state.winner
                     assert winner is not None
@@ -195,6 +197,7 @@ def run_self_play_games_batched(
                         v = float(outcome_v + move_penalty + shaping)
                         v = max(-1.0, min(1.0, v))
                         all_experiences.append((s_t, p_t, v))
+                        all_experiences.append(flip_experience(s_t, p_t, v, n))
             else:
                 still_active.append(idx)
 
